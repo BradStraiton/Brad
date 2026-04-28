@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cash Flow Spreadsheet App</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f5f7fb;
+        color: #1f2937;
+      }
+      .container {
+        max-width: 1100px;
+        margin: 24px auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        padding: 24px;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      .meta {
+        color: #4b5563;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      select,
+      input {
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border: 1px solid #e5e7eb;
+        padding: 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        background: #f3f4f6;
+      }
+      .table-wrap {
+        max-height: 65vh;
+        overflow: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+      }
+      .muted {
+        color: #6b7280;
+      }
+      .error {
+        color: #b91c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Cash Flow Data Viewer</h1>
+      <div id="meta" class="meta">Loading spreadsheet…</div>
+      <div class="toolbar">
+        <label>
+          Sheet:
+          <select id="sheet"></select>
+        </label>
+        <label>
+          Search rows:
+          <input id="search" type="text" placeholder="Type to filter" />
+        </label>
+        <span id="counts" class="muted"></span>
+      </div>
+      <div id="table" class="table-wrap"></div>
+      <p class="muted">Data is pulled directly from the attached Excel file on every API request.</p>
+    </main>
+
+    <script>
+      let workbook = null;
+
+      async function loadData() {
+        const metaEl = document.getElementById("meta");
+        try {
+          const response = await fetch("/api/data");
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to load data");
+          }
+
+          workbook = data;
+          metaEl.textContent = `Workbook: ${data.workbook} • ${data.sheets.length} sheet(s)`;
+
+          const sheetSelect = document.getElementById("sheet");
+          sheetSelect.innerHTML = "";
+          data.sheets.forEach((sheet, idx) => {
+            const opt = document.createElement("option");
+            opt.value = String(idx);
+            opt.textContent = `${sheet.name} (${sheet.rows.length} rows)`;
+            sheetSelect.appendChild(opt);
+          });
+
+          sheetSelect.onchange = render;
+          document.getElementById("search").oninput = render;
+          render();
+        } catch (error) {
+          metaEl.innerHTML = `<span class="error">${error.message}</span>`;
+        }
+      }
+
+      function render() {
+        if (!workbook) return;
+
+        const index = Number(document.getElementById("sheet").value || 0);
+        const search = document.getElementById("search").value.trim().toLowerCase();
+        const sheet = workbook.sheets[index];
+        const columns = sheet.columns || [];
+
+        const rows = (sheet.rows || []).filter((row) => {
+          if (!search) return true;
+          return Object.values(row).some((value) => String(value).toLowerCase().includes(search));
+        });
+
+        document.getElementById("counts").textContent = `Showing ${rows.length} of ${sheet.rows.length} rows`;
+
+        if (columns.length === 0) {
+          document.getElementById("table").innerHTML = '<p class="muted">No rows found in this sheet.</p>';
+          return;
+        }
+
+        const thead = `<thead><tr>${columns.map((col) => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead>`;
+        const tbody = `<tbody>${rows
+          .map(
+            (row) =>
+              `<tr>${columns
+                .map((column) => `<td>${escapeHtml(String(row[column] ?? ""))}</td>`)
+                .join("")}</tr>`
+          )
+          .join("")}</tbody>`;
+
+        document.getElementById("table").innerHTML = `<table>${thead}${tbody}</table>`;
+      }
+
+      function escapeHtml(value) {
+        return value
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      loadData();
+    </script>
+  </body>
+</html>
